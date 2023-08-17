@@ -36,6 +36,7 @@ class OperateType(BaseEnum):
     ADD = "0"
     DELETE = "1"
     UPDATE = "2"
+    SOFT_DELETE = "3"
 
 
 class CITypeOperateType(BaseEnum):

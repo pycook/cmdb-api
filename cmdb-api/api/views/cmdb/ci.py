@@ -1,4 +1,4 @@
-# -*- coding:utf-8 -*- 
+# -*- coding:utf-8 -*-
 
 import time
 
@@ -10,7 +10,7 @@ from flask import request
 from api.lib.cmdb.cache import CITypeCache
 from api.lib.cmdb.ci import CIManager
 from api.lib.cmdb.ci import CIRelationManager
-from api.lib.cmdb.const import ExistPolicy
+from api.lib.cmdb.const import ExistPolicy, CMDB_QUEUE
 from api.lib.cmdb.const import ResourceTypeEnum, PermEnum
 from api.lib.cmdb.const import RetKey
 from api.lib.cmdb.perms import has_perm_for_ci
@@ -240,3 +240,20 @@ class CIAutoDiscoveryStatisticsView(APIView):
 
     def get(self):
         return self.jsonify(CIManager.get_ad_statistics())
+
+
+class SoftDeleteCis(APIView):
+    url_prefix = ("/ci/soft_deleted/cis",)
+
+    def get(self):
+        manager = CIManager()
+        ids = manager.get_soft_delete_ids()
+        return self.jsonify({"count": len(ids), "ids": ids})
+
+    def delete(self):
+        from api.tasks.cmdb import delete_soft_deleted_ci
+        manager = CIManager()
+        ids = manager.get_soft_delete_ids()
+        for _id in ids:
+            delete_soft_deleted_ci.apply_async([_id], queue=CMDB_QUEUE)
+        return self.jsonify(message="add {} ci to celery".format(len(ids)))

@@ -20,7 +20,7 @@ class FormatMixin(object):
         res.pop('secret', None)
 
         return res
-    
+
     @classmethod
     def from_dict(cls, **kwargs):
         from sqlalchemy.sql.sqltypes import Time, Date, DateTime
@@ -86,11 +86,11 @@ class CRUDMixin(FormatMixin):
         self.save(flush=flush, commit=commit)
 
     @classmethod
-    def get_by_id(cls, _id):
+    def get_by_id(cls, _id, with_soft_deleted=False):
         if any((isinstance(_id, six.string_types) and _id.isdigit(),
                 isinstance(_id, (six.integer_types, float))), ):
             obj = getattr(cls, "query").get(int(_id))
-            if obj and not obj.deleted:
+            if obj and (with_soft_deleted or not obj.deleted):
                 return obj
 
     @classmethod

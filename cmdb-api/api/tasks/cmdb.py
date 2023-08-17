@@ -156,3 +156,19 @@ def trigger_notify(notify, ci_id):
                            for i in notify['mail_to'] if i], subject, body)
         except Exception as e:
             current_app.logger.error("Send mail failed: {0}".format(str(e)))
+
+
+@celery.task(name='cmdb.delete_soft_deleted_ci', queue=CMDB_QUEUE)
+def delete_soft_deleted_ci(ci_id):
+    current_app.logger.info("delete_soft_deleted_ci: {}".format(ci_id))
+
+    from api.app import create_app
+    from flask_login import login_user
+    from api.lib.perm.acl.cache import UserCache
+
+    app = create_app()
+    app.test_request_context().push()
+    login_user(UserCache.get('worker'))
+
+    manager = api.lib.cmdb.ci.CIManager()
+    manager.delete(ci_id)

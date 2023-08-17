@@ -233,9 +233,12 @@ class CIManager(object):
             return CI.get_by_id(unique.ci_id)
 
     @staticmethod
-    def _delete_ci_by_id(ci_id):
+    def _delete_ci_by_id(ci_id, soft_delete=False):
         ci = CI.get_by_id(ci_id)
-        ci.delete()  # TODO: soft delete
+        if soft_delete:
+            ci.soft_delete()
+        else:
+            ci.delete()
 
     @staticmethod
     def _valid_unique_constraint(type_id, ci_dict, ci_id=None):
@@ -442,8 +445,8 @@ class CIManager(object):
         ci_cache.apply_async([ci_id], queue=CMDB_QUEUE)
 
     @classmethod
-    def delete(cls, ci_id):
-        ci = CI.get_by_id(ci_id) or abort(404, ErrFormat.ci_not_found.format("id={}".format(ci_id)))
+    def delete(cls, ci_id, soft_delete=False):
+        ci = CI.get_by_id(ci_id, not soft_delete) or abort(404, ErrFormat.ci_not_found.format("id={}".format(ci_id)))
 
         cls._valid_ci_for_no_read(ci)
 
@@ -454,20 +457,32 @@ class CIManager(object):
         attr_names = set([AttributeCache.get(attr.attr_id).name for attr in attrs])
         for attr_name in attr_names:
             value_table = TableMap(attr_name=attr_name).table
-            for item in value_table.get_by(ci_id=ci_id, to_dict=False):
+            for item in value_table.get_by(ci_id=ci_id, to_dict=False, deleted=not soft_delete):
+                if soft_delete:
+                    item.soft_delete()
+                else:
+                    item.delete()
+
+        for item in CIRelation.get_by(first_ci_id=ci_id, to_dict=False, deleted=not soft_delete):
+            ci_relation_delete.apply_async(args=(item.first_ci_id, item.second_ci_id), queue=CMDB_QUEUE)
+            if soft_delete:
+                item.soft_delete()
+            else:
                 item.delete()
 
-        for item in CIRelation.get_by(first_ci_id=ci_id, to_dict=False):
+        for item in CIRelation.get_by(second_ci_id=ci_id, to_dict=False, deleted=not soft_delete):
             ci_relation_delete.apply_async(args=(item.first_ci_id, item.second_ci_id), queue=CMDB_QUEUE)
-            item.delete()
+            if soft_delete:
+                item.soft_delete()
+            else:
+                item.delete()
 
-        for item in CIRelation.get_by(second_ci_id=ci_id, to_dict=False):
-            ci_relation_delete.apply_async(args=(item.first_ci_id, item.second_ci_id), queue=CMDB_QUEUE)
-            item.delete()
-
-        ci.delete()  # TODO: soft delete
-
-        AttributeHistoryManger.add(None, ci_id, [(None, OperateType.DELETE, ci_dict, None)], ci.type_id)
+        if soft_delete:
+            ci.soft_delete()
+            AttributeHistoryManger.add(None, ci_id, [(None, OperateType.SOFT_DELETE, ci_dict, None)], ci.type_id)
+        else:
+            ci.delete()
+            AttributeHistoryManger.add(None, ci_id, [(None, OperateType.DELETE, ci_dict, None)], ci.type_id)
 
         ci_delete.apply_async([ci.id], queue=CMDB_QUEUE)
 
@@ -650,6 +665,10 @@ class CIManager(object):
 
         current_app.logger.warning("cache not hit...............")
         return cls._get_cis_from_db(ci_ids, ret_key, fields, value_tables, excludes=excludes)
+
+    @classmethod
+    def get_soft_delete_ids(cls):
+        return [ci.get("id") for ci in CI.get_by(deleted=True)]
 
 
 class CIRelationManager(object):
