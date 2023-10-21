@@ -16,6 +16,7 @@ from api.lib.database import Model
 from api.lib.database import SoftDeleteMixin
 from api.lib.perm.acl.const import ACL_QUEUE
 from api.lib.perm.acl.const import OperateType
+from api.lib.utils import AESCrypto, VaultTransitCrypto
 
 
 class App(Model):
@@ -126,7 +127,7 @@ class User(CRUDModel, SoftDeleteMixin):
     catalog = db.Column(db.String(64))
     email = db.Column(db.String(100), unique=True, nullable=False)
     mobile = db.Column(db.String(14), unique=True)
-    _password = db.Column("password", db.String(80))
+    _password = db.Column("password", db.String(128))
     key = db.Column(db.String(32), nullable=False)
     secret = db.Column(db.String(32), nullable=False)
     date_joined = db.Column(db.DateTime, default=datetime.utcnow)
@@ -155,14 +156,21 @@ class User(CRUDModel, SoftDeleteMixin):
         return self._password
 
     def _set_password(self, password):
-        self._password = hashlib.md5(password.encode('utf-8')).hexdigest()
+        md5_password = hashlib.md5(password.encode('utf-8')).hexdigest()
+        if current_app.config.get("ENCRYPT_PASSWORD_TYPE") == 'VAULT':
+            self._password = VaultTransitCrypto.encrypt(md5_password)
+        else:
+            self._password = AESCrypto.encrypt(md5_password)
 
     password = db.synonym("_password", descriptor=property(_get_password, _set_password))
 
-    def check_password(self, password):
+    def check_password(self, md5_password):
         if self.password is None:
             return False
-        return self.password == password or self.password == hashlib.md5(password.encode('utf-8')).hexdigest()
+        if current_app.config.get("ENCRYPT_PASSWORD_TYPE") == 'VAULT':
+            return VaultTransitCrypto.decrypt(self.password) == md5_password
+        else:
+            return AESCrypto.decrypt(self.password) == md5_password
 
 
 class RoleQuery(BaseQuery):

@@ -97,3 +97,7 @@ BOOL_TRUE = ['true', 'TRUE', 'True', True, '1', 1, "Yes", "YES", "yes", 'Y', 'y'
 
 # # messenger
 USE_MESSENGER = True
+
+ENCRYPT_PASSWORD_TYPE = "VAULT"  # "VAULT" or "AES"
+VAULT_URL = 'http://'  # 当 ENCRYPT_PASSWORD_TYPE 为 VAULT 时，需要配置
+VAULT_TOKEN = ''  # 当 ENCRYPT_PASSWORD_TYPE 为 VAULT 时，需要配置

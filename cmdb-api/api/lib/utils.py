@@ -6,6 +6,7 @@ import time
 from typing import Set
 
 import elasticsearch
+import hvac
 import redis
 import six
 from Crypto.Cipher import AES
@@ -286,3 +287,35 @@ class AESCrypto(object):
         text_decrypted = cipher.decrypt(encode_bytes)
 
         return cls.unpad(text_decrypted).decode('utf8')
+
+
+class VaultTransitCrypto:
+    TRANSIT_KEY_NAME = 'cmdb-hvac-key'
+    client = None
+
+    @classmethod
+    def init_client(cls):
+        if not cls.client or not cls.client.is_authenticated():
+            cls.client = hvac.Client(
+                url=current_app.config.get('VAULT_URL'),
+                token=current_app.config.get('VAULT_TOKEN'),
+            )
+
+    @classmethod
+    def encrypt(cls, text):
+        cls.init_client()
+        cls.client.secrets.transit.create_key(name=cls.TRANSIT_KEY_NAME)
+        encrypt_data_response = cls.client.secrets.transit.encrypt_data(
+            name=cls.TRANSIT_KEY_NAME,
+            plaintext=base64.b64encode(text.encode()).decode(),
+        )
+        return encrypt_data_response['data']['ciphertext']
+
+    @classmethod
+    def decrypt(cls, ciphertext):
+        cls.init_client()
+        decrypt_data_response = cls.client.secrets.transit.decrypt_data(
+            name=cls.TRANSIT_KEY_NAME,
+            ciphertext=ciphertext,
+        )
+        return base64.b64decode(decrypt_data_response['data']['plaintext']).decode()
